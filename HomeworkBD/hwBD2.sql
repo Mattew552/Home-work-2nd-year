@@ -22,3 +22,8 @@ select id, name from "GoodCategory" gc where
 not exists(select * from "Good" g join "Good_Shop" gs on g.id=gs.id_good
 where g."id_goodCategory"=gc.id and gs.count is not null)
 */
+/* агрегатные функции
+select "GoodCategory".id, "GoodCategory".name from "GoodCategory" left join "Good" on
+("GoodCategory".id="Good"."id_goodCategory") left join "Good_Shop" on
+("Good".id="Good_Shop"."id_good")
+group by "GoodCategory".id, "GoodCategory".name having count("Good_Shop".id_good)=0;*/
