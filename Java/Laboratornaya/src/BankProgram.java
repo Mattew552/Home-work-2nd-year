@@ -3,17 +3,17 @@ import java.util.List;
 import java.util.Scanner;
 import java.io.*;
 public class BankProgram {
-    private static BankAccount currentAccount = null;
-    private static Scanner scanner = new Scanner(System.in);
+    private static BankAccount currentAccount = null; //проверка, есть ли счет
+    private static Scanner scanner = new Scanner(System.in); //Для сканирования данных от пользователя
 
     public static void main(String[] args) {
         System.out.println("    ДОБРО ПОЖАЛОВАТЬ В БАНКОВСКУЮ СИСТЕМУ    ");
-        currentAccount = BankDataManager.loadAccount();
+        currentAccount = BankDataManager.loadAccount(); //Подразумевалась загрузка существующего счета, но дело не пошло
         while (true) {
             showMainMenu();
             int choice = getIntInput("Выберите действие: ");
             try {
-                switch (choice) {
+                switch (choice) {//варианты действий пользователя
                     case 1 -> openAccount();
                     case 2 -> depositMoney();
                     case 3 -> withdrawMoney();
@@ -21,7 +21,7 @@ public class BankProgram {
                     case 5 -> showTransactions();
                     case 6 -> searchTransactions();
                     case 0 -> {
-                        BankDataManager.saveAccount(currentAccount);
+                        BankDataManager.saveAccount(currentAccount);// сохранение файлов для дальнейшей загрузки
                         System.out.println("Выход из программы");
                         return;
                     }
