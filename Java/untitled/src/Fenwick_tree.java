@@ -77,6 +77,35 @@ public class Fenwick_tree<T extends Number>{
         int d=value-current;
         update(index, d);
     }
+    public void increaseRange(int left, int right, int delta){
+        if(tree==null){
+            throw new IllegalArgumentException("Дерево еще не создано, воспользуйтесь build()");
+        }
+        if(left<0||right<0||left>=n||right>=n){
+            throw new IndexOutOfBoundsException("Диапазон за границами");
+        }
+
+        if (left>right){
+            throw new IllegalArgumentException("Левый индекс не может быть больше правого");
+        }
+        for (int i=left; i<right;i++){
+            update(i, delta);
+        }
+    }
+    public int findPrefixSum(int target){
+        int sum = 0;
+        int pos = 0;
+        int i = Integer.highestOneBit(n);
+        while (i!=0){
+            if (pos+i<=n&&sum+tree[pos+i]<target){
+                sum+=tree[pos+i];
+                pos+=i;
+            }
+            i=i/2;
+        }
+
+        return pos;
+    }
 
 
 
