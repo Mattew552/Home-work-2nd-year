@@ -88,7 +88,7 @@ public class Fenwick_tree<T extends Number>{
         if (left>right){
             throw new IllegalArgumentException("Левый индекс не может быть больше правого");
         }
-        for (int i=left; i<right;i++){
+        for (int i=left; i<=right;i++){
             update(i, delta);
         }
     }
@@ -106,6 +106,20 @@ public class Fenwick_tree<T extends Number>{
 
         return pos;
     }
+    /*public void printArray() {
+        if (tree == null) {
+            throw new IllegalArgumentException("Дерево еще не создано, воспользуйтесь build()");
+        }
+
+        System.out.print("Текущий массив: [");
+        for (int i = 0; i < n; i++) {
+            int val = getValue(i);
+            System.out.print(val);
+            if (i < n - 1) System.out.print(", ");
+        }
+
+        System.out.println("]");
+    }*/
 
 
 

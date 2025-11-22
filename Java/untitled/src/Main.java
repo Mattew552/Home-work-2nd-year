@@ -17,6 +17,24 @@ public class Main{
         System.out.print("Обновленное значение "+ ft.getValue(1)+"\n");
         System.out.print("Префиксная сумма первых 2 элементов массива(обновленного) "+ft.prefixSum(1)+" \n");
         System.out.print("Префиксная сумма первых 4 элементов массива(обновленного) "+ft.prefixSum(3)+" \n");
+        ft.increaseRange(2,4,1);
+        ft.getValue(2); ft.getValue(3); ft.getValue(4);
+        System.out.print(ft.prefixSum(3)+"\n"+ ft.rangeSum(2,4)+"\n");
+        for(int i=0;i< arr.length;i++){
+            System.out.print(ft.prefixSum(i)+" ");
+        }
+        System.out.print("\n"+ft.findPrefixSum(9)+" ");
+        /*try{
+            ft.update(-1,5);
+            ft.prefixSum(20);
+            ft.rangeSum(-1,20);
+            Fenwick_tree<Integer> ft2=new Fenwick_tree<>();
+            ft2.prefixSum(0);
+        }
+        catch(Exception e){
+            System.out.println("Exception "+e.getMessage()+"\n");
+        }*/
+        //ft.printArray();
 
 
     }
