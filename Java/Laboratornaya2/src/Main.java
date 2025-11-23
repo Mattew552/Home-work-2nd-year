@@ -5,7 +5,7 @@ public class Main{
         Integer[] arr={3,2,-1,6,5,4};
         Fenwick_tree<Integer> ft =new Fenwick_tree<>();
         ft.build(arr);
-        System.out.print("Built tree"+ Arrays.toString(arr)+"\n");
+        System.out.print("Дерево построено"+ Arrays.toString(arr)+"\n");
 
         System.out.print("Префиксная сумма первых 4 элементов массива "+ft.prefixSum(3)+" \n");
         System.out.print("Префиксная сумма в некотором диапазоне "+ft.rangeSum(2,4)+" \n");
