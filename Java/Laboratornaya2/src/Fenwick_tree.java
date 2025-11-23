@@ -69,7 +69,7 @@ public class Fenwick_tree<T extends Number>{
             throw new IndexOutOfBoundsException("Индекс за границами " + index);
         }
         int a=prefixSum(index);
-        int b=prefixSum(index-1);
+        int b=(index==0)?0:prefixSum(index-1);
         return a-b;
     }
     public void setValue(int index, int value){
@@ -106,7 +106,7 @@ public class Fenwick_tree<T extends Number>{
 
         return pos;
     }
-    /*public void printArray() {
+    public void printArray() {
         if (tree == null) {
             throw new IllegalArgumentException("Дерево еще не создано, воспользуйтесь build()");
         }
@@ -119,7 +119,7 @@ public class Fenwick_tree<T extends Number>{
         }
 
         System.out.println("]");
-    }*/
+    }
 
 
 

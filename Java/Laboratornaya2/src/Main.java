@@ -23,7 +23,7 @@ public class Main{
         for(int i=0;i< arr.length;i++){
             System.out.print(ft.prefixSum(i)+" ");
         }
-        System.out.print("\n"+ft.findPrefixSum(9)+" ");
+        System.out.print("\n"+ft.findPrefixSum(9)+" "+"\n");
         /*try{
             ft.update(-1,5);
             ft.prefixSum(20);
@@ -34,7 +34,7 @@ public class Main{
         catch(Exception e){
             System.out.println("Exception "+e.getMessage()+"\n");
         }*/
-        //ft.printArray();
+        ft.printArray();
 
 
     }
