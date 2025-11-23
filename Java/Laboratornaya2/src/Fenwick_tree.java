@@ -73,6 +73,12 @@ public class Fenwick_tree<T extends Number>{
         return a-b;
     }
     public void setValue(int index, int value){
+        if (tree == null){
+            throw new IllegalArgumentException("Дерево еще не создано, воспользуйтесь build()");
+        }
+        if (index < 0 || index >= n){
+            throw new IndexOutOfBoundsException("Индекс за границами " + index);
+        }
         int current=getValue(index);
         int d=value-current;
         update(index, d);
@@ -93,6 +99,12 @@ public class Fenwick_tree<T extends Number>{
         }
     }
     public int findPrefixSum(int target){
+        if (tree == null){
+            throw new IllegalArgumentException("Дерево еще не создано, воспользуйтесь build()");
+        }
+        if (target <= 0){
+            throw new IllegalArgumentException("target должен быть положительным");
+        }
         int sum = 0;
         int pos = 0;
         int i = Integer.highestOneBit(n);
