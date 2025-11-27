@@ -30,6 +30,8 @@ public class MainWindow extends JFrame {//класс главного окна
         JButton bAdd = new JButton("Add");
         JButton bDel = new JButton("Delete");
         JButton bSearch = new JButton("Search");
+        JButton bSearchDest = new JButton("Search by Dest");
+        JButton bDeleteDest = new JButton("Delete by Dest");
         JButton bEdit = new JButton("Edit");
         JButton bRefresh = new JButton("Synchronize");
         JButton bBackup = new JButton("Backup");
@@ -37,11 +39,49 @@ public class MainWindow extends JFrame {//класс главного окна
 
         panel.add(bCreate); panel.add(bOpen); panel.add(bAdd); panel.add(bDel);
         panel.add(bSearch); panel.add(bEdit); panel.add(bRefresh);
-        panel.add(bBackup); panel.add(bRestore);
+        panel.add(bBackup); panel.add(bRestore);panel.add(bSearchDest);
+        panel.add(bDeleteDest);
 
         add(panel, BorderLayout.SOUTH);
 
         //Подвязываем функции к кнопкам
+        bSearchDest.addActionListener(e -> {
+            if (!storage.isOpened()) return;
+
+            String dest = JOptionPane.showInputDialog("Enter destination to search:");
+            if (dest == null) return;
+
+            try {
+                List<BusTicket> results = storage.searchByDestination(dest);
+                if (results.isEmpty()) {
+                    JOptionPane.showMessageDialog(this, "No tickets found for destination: " + dest);
+                } else {
+                    // Показываем результаты поиска
+                    StringBuilder message = new StringBuilder("Found tickets:\n");
+                    for (BusTicket ticket : results) {
+                        message.append(ticket.toString()).append("\n");
+                    }
+                    JOptionPane.showMessageDialog(this, message.toString());
+                }
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this, "Error: " + ex);
+            }
+        });
+        // Удаление по направлению
+        bDeleteDest.addActionListener(e -> {
+            if (!storage.isOpened()) return;
+
+            String dest = JOptionPane.showInputDialog("Enter destination to delete:");
+            if (dest == null) return;
+
+            try {
+                int count = storage.deleteByDestination(dest);
+                JOptionPane.showMessageDialog(this, "Deleted " + count + " tickets for destination: " + dest);
+                refreshTable();
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this, "Error: " + ex);
+            }
+        });
 
         bCreate.addActionListener(e -> {//создание базы данных запускает диалоговое окно
             JFileChooser fc = new JFileChooser();
@@ -58,7 +98,11 @@ public class MainWindow extends JFrame {//класс главного окна
         bOpen.addActionListener(e -> {//Кнопка открытия БД
             JFileChooser fc = new JFileChooser();
             if (fc.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-                storage.openDB(fc.getSelectedFile().getPath());
+                try {
+                    storage.openDB(fc.getSelectedFile().getPath());
+                } catch (Exception ex) {
+                    throw new RuntimeException(ex);
+                }
                 refreshTable();//обновляем таблицу с данными
             }
         });
