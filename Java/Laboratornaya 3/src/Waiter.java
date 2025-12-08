@@ -35,15 +35,19 @@ public class Waiter implements Runnable{
         while (working && !Thread.currentThread().isInterrupted()) {
             try {
                 CustomerOrder order = orderQueue.take();
+                synchronized(System.out) {
 
-                System.out.println("Официант #" + waiterNumber +
-                        " принял заказ #" + order.customerId +
-                        ": " + order.dish.getName());
+                    System.out.println("Официант #" + waiterNumber +
+                            " принял заказ #" + order.customerId +
+                            ": " + order.dish.getName());
+                }
                 Future<String> cookingResult = kitchen.cookDish(order.dish, order.customerId);
                 String result = cookingResult.get();
-                System.out.println("Официант #" + waiterNumber +
-                        " отдал заказ #" + order.customerId +
-                        " (блюдо: " + order.dish.getName() + ")");
+                synchronized(System.out) {
+                    System.out.println("Официант #" + waiterNumber +
+                            " отдал заказ #" + order.customerId +
+                            " (блюдо: " + order.dish.getName() + ")");
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;

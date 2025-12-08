@@ -1,6 +1,6 @@
 import java.util.concurrent.Callable;
 
-public class Cook implements Runnable{
+public class Cook{
 
     private final String dishName;
     private final int cookingTime;
@@ -10,33 +10,17 @@ public class Cook implements Runnable{
         this.cookingTime=cookingTime;
         this.CookID=CookID;
     }
-
-
-    @Override
-    public void run() {
-        try{
-            System.out.println("Повар"+CookID+" начинает готовить"+ dishName);
-            Thread.sleep(cookingTime);
-            System.out.println("Повар"+CookID+" приготовил"+ dishName);
-
-        }
-        catch(InterruptedException e){
-            Thread.currentThread().interrupt();
-            System.out.println("Повар"+CookID+" прерван");
-        }
-
-    }
-    public static class CookTask implements Callable<String> {
-        private final Cook cook;
-
-        public CookTask(Cook cook) {
-            this.cook = cook;
-        }
-
+    public class CookTask implements Callable<String> {
         @Override
-        public String call() throws Exception {
-            cook.run();
-            return "Повар " + cook.CookID + " приготовил " + cook.dishName;
+        public String call() throws Exception{
+            synchronized (System.out) {
+                System.out.println("Повар " + CookID + " начинает готовить " + dishName);
+            }
+            Thread.sleep(cookingTime);
+            synchronized (System.out) {
+                System.out.println("Повар " + CookID + " приготовил " + dishName);
+            }
+            return "Блюдо '" + dishName + "' (повар " + CookID + ") готово";
         }
     }
 }
