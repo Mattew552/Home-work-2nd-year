@@ -1,10 +1,12 @@
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.atomic.AtomicInteger;
+
 public class Waiter implements Runnable{
     private int waiterNumber;
     private BlockingQueue<CustomerOrder> orderQueue;//очередь заказов от клиентов
     private Kitchen kitchen;
     private volatile boolean working=true;//флаг, что бы по нему потом быстро завершить + volatile видны всем потокам
-
+    private final AtomicInteger processedOrders;
 
     public static class CustomerOrder {
         public final int customerId;
@@ -23,10 +25,11 @@ public class Waiter implements Runnable{
             this.result=result;
         }
     }
-    public Waiter(int waiterNumber, BlockingQueue<CustomerOrder> orderQueue, Kitchen kitchen) {
+    public Waiter(int waiterNumber, BlockingQueue<CustomerOrder> orderQueue, Kitchen kitchen, AtomicInteger processedOrders) {
         this.waiterNumber = waiterNumber;
         this.orderQueue = orderQueue;
         this.kitchen = kitchen;
+        this.processedOrders=processedOrders;
     }
 
 
@@ -51,6 +54,8 @@ public class Waiter implements Runnable{
                 synchronized (System.out) {
                     System.out.println("Официант " + waiterNumber + " отдал заказ " + order.customerId + " (блюдо: " + order.dish.getName() + "): " + order.getResult());
                 }
+                processedOrders.incrementAndGet();
+
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
