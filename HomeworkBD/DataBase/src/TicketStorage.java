@@ -1,257 +1,361 @@
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
-import java.io.EOFException;
-public class TicketStorage { //класс для самой базы данных
 
+/*
+
+
+
+createDB(path) - создать файл БД
+openDB(path) - открыть файл и построить индекс
+addRecord - добавить запись O(1)
+searchById(id) - найти запись по id  O(1)
+deleteById(id) - удалить запись O(1)
+editRecord - редактирование O(1)
+backup(path) - копировать db в backup
+restore(path) - заменить db backup'ом и перестроить индекс
+SearchByDestination(String) - поиск по маршруту за О(1)
+DeleteByDestination(String) - удаление по маршруту за О(1), зависит от количества билетов с одинаковым маршрутом
+Высокая скорость благодаря hashMap и индексам
+ */
+public class TicketStorage {
+
+    // Файл с данными
     private File dbFile;
-    private Map<Integer, Long> idIndex;
-    private Map<String, Set<Integer>> destinationIndex;
-    private RandomAccessFile raf;
-    public TicketStorage(){
-        this.idIndex=new HashMap<>();
-        this.destinationIndex=new HashMap<>();
-    }
 
-    //Создание новой пустой БД
-    public void createDB(String path) throws Exception {
-        dbFile = new File(path); //создаем файл по указанному пути
-        if (!dbFile.exists()) {//проверка на существование файла, если нет, создаем
+    // Файл индекса (id;offset per line)
+    private File idxFile;
+
+
+    // Доступ к HashMap O(1)
+    private final HashMap<Integer, Long> index = new HashMap<>();
+    private final HashMap<String, Set<Integer>> destinationIndex = new HashMap<>();
+
+
+    public TicketStorage() { }
+
+    /*
+     Создать новую базу данных
+     path — путь к файлу
+     */
+    public void createDB(String path) throws IOException {
+        dbFile = new File(path);
+        idxFile = new File(path + ".idx");
+
+        // Убедимся, что родительская директория существует
+        File parent = dbFile.getParentFile();
+        if (parent != null && !parent.exists()) parent.mkdirs();
+
+        // Если файла не было — создаём; если был — очищаем его
+        if (!dbFile.exists()) {
             dbFile.createNewFile();
         } else {
-            new PrintWriter(dbFile).close(); // очистка существующего
+            try (FileOutputStream fos = new FileOutputStream(dbFile, false)) {
+            }
         }
-        // Открываем файл для произвольного доступа
-        if (raf != null) {
-            raf.close();
-        }
-        raf = new RandomAccessFile(dbFile, "rw");
-        idIndex.clear();
-        destinationIndex.clear();
+
+        // Сбрасываем индекс и записываем пустой idxFile
+        index.clear();
+        saveIndex();
     }
 
-    //Открытие существующей БД
-    public void openDB(String path) throws Exception {
-        dbFile = new File(path); //сохраняем путь к файлу
-        // Открываем файл для произвольного доступа
-        if (raf != null) {
-            raf.close();
-        }
-        raf = new RandomAccessFile(dbFile, "rw");
-        // Перестраиваем индексы при открытии
-        rebuildIndexes();
+    /*
+     Открыть существующую БД и построить индекс сканированием.
+     buildIndexFromFile() выполняется внутри.
+     */
+    public void openDB(String path) throws IOException {
+        dbFile = new File(path);
+        if (!dbFile.exists()) throw new FileNotFoundException("DB file not found: " + path);
+        idxFile = new File(path + ".idx");
+        buildIndexFromFile();
     }
-    // Перестроение индексов из файла
-    private void rebuildIndexes() throws Exception {
-        idIndex.clear();
+
+    /*
+     Построить индекс, сканируя файл. Используем RandomAccessFile, чтобы
+     корректно получить смещения каждого начала строки.
+ */
+    private void buildIndexFromFile() throws IOException {
+        index.clear();
         destinationIndex.clear();
+        try (RandomAccessFile raf = new RandomAccessFile(dbFile, "r")) {
+            long fileLen = raf.length();
+            long pos = 0;
+            while (pos < fileLen) {
+                raf.seek(pos);
+                String line = raf.readLine(); // строка без '\n'
+                if (line == null) break;
 
-        if (raf.length() == 0) return;
-
-        raf.seek(0); // Перемещаемся в начало файла
-        while (raf.getFilePointer() < raf.length()) {
-            long position = raf.getFilePointer(); // Запоминаем текущую позицию
-            BusTicket ticket = readNextTicket(); // Читаем следующий билет
-            if (ticket != null) {
-                // Обновляем индексы
-                idIndex.put(ticket.getId(), position);
-                destinationIndex.computeIfAbsent(ticket.getDestination(),
-                        k -> new HashSet<>()).add(ticket.getId());
+                if (line.length() > 0 && line.charAt(0) == '1') {
+                    //парсим payload (без флага)
+                    String payload = line.substring(1);
+                    try {
+                        BusTicket t = BusTicket.fromString(payload);
+                        index.put(t.getId(), pos);
+                        destinationIndex
+                                .computeIfAbsent(t.getDestination(), k -> new HashSet<>())
+                                .add(t.getId());
+                    } catch (Exception ex) {
+                        // Некорректная строка - пропускаем
+                    }
+                }
+                // RandomAccessFile.getFilePointer() указывает на начало следующей строки
+                pos = raf.getFilePointer();
             }
         }
     }
-    // Чтение следующего билета из текущей позиции
-    private BusTicket readNextTicket() throws IOException {
-        try {
-            // Читаем данные в бинарном формате
-            int id = raf.readInt();
-            int destLength = raf.readInt();
-            byte[] destBytes = new byte[destLength];
-            raf.readFully(destBytes);
-            String destination = new String(destBytes, "UTF-8"); // ЗАМЕНА: убрали StandardCharsets.
-            double price = raf.readDouble();
-            boolean available = raf.readBoolean();
 
-            return new BusTicket(id, destination, price, available);
-        } catch (EOFException e) {
-            return null; // Достигнут конец файла
+    /*
+     Сохранить текущий индекс в .idx файл.
+     Формат .idx: построчно "id;offset"
+     Это опция ускоряет последующее открытие.
+     */
+    public void saveIndex() throws IOException {
+        if (dbFile == null) throw new IllegalStateException("DB file not set");
+        if (idxFile == null) idxFile = new File(dbFile.getPath() + ".idx");
+
+        try (BufferedWriter bw = new BufferedWriter(new FileWriter(idxFile, false))) {
+            for (Map.Entry<Integer, Long> e : index.entrySet()) {
+                bw.write(e.getKey() + ";" + e.getValue());
+                bw.newLine();
+            }
         }
     }
 
-    // Запись билета в указанную позицию
-    private void writeTicket(BusTicket ticket, long position) throws IOException {
-        raf.seek(position); // Перемещаемся в нужную позицию
-        // Записываем данные в бинарном формате
-        raf.writeInt(ticket.getId());
-        byte[] destBytes = ticket.getDestination().getBytes("UTF-8"); // ЗАМЕНА: убрали StandardCharsets.
-        raf.writeInt(destBytes.length); // Длина строки назначения
-        raf.write(destBytes); // Сама строка
-        raf.writeDouble(ticket.getPrice());
-        raf.writeBoolean(ticket.isAvailable());
+    /*
+     Загрузить индекс из .idx файла (если он корректен).
+     */
+    public void loadIndexFromIdxFile() throws IOException {
+        if (dbFile == null) throw new IllegalStateException("DB file not set");
+        if (idxFile == null) idxFile = new File(dbFile.getPath() + ".idx");
+        if (!idxFile.exists()) throw new FileNotFoundException("Index file not found: " + idxFile.getPath());
+
+        index.clear();
+        try (BufferedReader br = new BufferedReader(new FileReader(idxFile))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                String[] parts = line.split(";");
+                if (parts.length != 2) continue;
+                int id = Integer.parseInt(parts[0]);
+                long off = Long.parseLong(parts[1]);
+                index.put(id, off);
+            }
+        }
     }
 
+    /*
+     Добавить запись. Проверка уникальности через in-memory index -> O(1).
+     Возвращает true при успешном добавлении, false если id уже существует.
+     */
+    public boolean addRecord(BusTicket t) throws IOException {
+        if (dbFile == null) throw new IllegalStateException("DB not opened");
+        int id = t.getId();
+        if (index.containsKey(id)) return false; // уже есть
 
-    // Добавить запись с проверкой уникальности ID - O(1)
-    public boolean addRecord(BusTicket t) throws Exception {
-        if (dbFile == null) throw new RuntimeException("DB not opened");
-        if (idIndex.containsKey(t.getId())) return false; // Быстрая проверка уникальности через индекс
+        String payload = t.toRecordPayload();          // "id|destination|price|available"
+        String line = "1" + payload + System.lineSeparator(); // '1' флаг = активна
 
-        // Записываем в конец файла
-        long position = raf.length();
-        writeTicket(t, position);
-
-        // Обновляем индексы - O(1)
-        idIndex.put(t.getId(), position);
-        destinationIndex.computeIfAbsent(t.getDestination(),
-                k -> new HashSet<>()).add(t.getId());
-
+        try (RandomAccessFile raf = new RandomAccessFile(dbFile, "rw")) {
+            long offset = raf.length(); // позиция начала новой строки
+            raf.seek(offset);
+            raf.write(line.getBytes()); // пишем
+            index.put(id, offset);
+            // обновляем индекс в памяти
+            destinationIndex//Если направление существует, возвращаем его
+                    .computeIfAbsent(t.getDestination(), k -> new HashSet<>())
+                    .add(t.getId());
+        }
         return true;
     }
 
-    //Прочитать все записи
-    public List<BusTicket> readAll() throws Exception {
-        if (dbFile == null) throw new RuntimeException("DB not opened");
+    /*
+     Прочитать все активные записи, используется для отображения в GUI.
 
-        List<BusTicket> list = new ArrayList<>(); //лист для результатов
-        for (Map.Entry<Integer, Long> entry : idIndex.entrySet()) {
-            raf.seek(entry.getValue());
-            BusTicket ticket = readNextTicket();
-            if (ticket != null) {
-                list.add(ticket);
+     */
+    public List<BusTicket> readAll() throws IOException {
+        if (dbFile == null) throw new IllegalStateException("DB not opened");
+        List<BusTicket> out = new ArrayList<>();
+        try (RandomAccessFile raf = new RandomAccessFile(dbFile, "r")) {
+            long fileLen = raf.length();
+            long pos = 0;
+            while (pos < fileLen) {
+                raf.seek(pos);
+                String line = raf.readLine();
+                if (line == null) break;
+                if (line.length() > 0 && line.charAt(0) == '1') {
+                    String payload = line.substring(1);
+                    try {
+                        BusTicket t = BusTicket.fromString(payload);
+                        out.add(t);
+                    } catch (Exception ex) {
+                        // игнорируем повреждённую строку
+                    }
+                }
+                pos = raf.getFilePointer();
             }
         }
-        return list;//возвращаем список билетов
+        return out;
     }
 
-    // Удалить по ID - O(1)
-    public boolean deleteById(int id) throws Exception {
-        if (dbFile == null) throw new RuntimeException("DB not opened");
+    /*
+     Поиск по ключу id O(1)
+     Возвращает объект BusTicket или null, если не найден.
+     */
+    public BusTicket searchById(int id) throws IOException {
+        if (dbFile == null) throw new IllegalStateException("DB not opened");
+        Long offset = index.get(id);
+        if (offset == null) return null;
 
-        Long position = idIndex.get(id);
-        if (position == null) return false; // Запись не найдена
+        try (RandomAccessFile raf = new RandomAccessFile(dbFile, "r")) {
+            raf.seek(offset);
+            String line = raf.readLine();
+            if (line == null || line.length() == 0) return null;
+            if (line.charAt(0) != '1') return null; // помечено удалённым
+            String payload = line.substring(1);
+            return BusTicket.fromString(payload);
+        }
+    }
 
-        // Находим билет для обновления destinationIndex
-        raf.seek(position);
-        BusTicket ticket = readNextTicket();
-        if (ticket == null) return false;
+    /*
+      Удаление по id O(1).
+      флаг '1' -> '0' в начале строки.
+     Также удаляем запись из index.
+     */
+    public boolean deleteById(int id) throws IOException {
+        if (dbFile == null) throw new IllegalStateException("DB not opened");
+        Long offset = index.remove(id);
+        if (offset == null) return false;
+        String destination=null;
+        try (RandomAccessFile raf = new RandomAccessFile(dbFile, "rw")) {
+            raf.seek(offset);
+            int b = raf.read();
+            if (b == -1) return false;
+            char flag = (char) b;
+            if (flag != '1') return false; // уже удалён
+            raf.seek(offset);
+            raf.writeByte((byte) '0'); // пометим как удалённую
+        }
+        index.remove(id);
 
-        // Удаляем из индексов - O(1)
-        idIndex.remove(id);
-        Set<Integer> destIds = destinationIndex.get(ticket.getDestination());
-        if (destIds != null) {
-            destIds.remove(id);
-            if (destIds.isEmpty()) {
-                destinationIndex.remove(ticket.getDestination());
+        if (destination != null) {
+            Set<Integer> ids = destinationIndex.get(destination);
+            if (ids != null) {
+                ids.remove(id);
+                if (ids.isEmpty()) {
+                    destinationIndex.remove(destination);
+                }
             }
         }
-
-
         return true;
     }
 
-    // Поиск по ID
-    public BusTicket searchById(int id) throws Exception {
-        if (dbFile == null) throw new RuntimeException("DB not opened");
+    /*
+     Редактирование записи:
+     пометить старую запись '0'
+     сделать новую (и обновить индекс)
+     это O(1).
+     */
+    public boolean editRecord(BusTicket updated) throws IOException {
+        if (dbFile == null) throw new IllegalStateException("DB not opened");
+        int id = updated.getId();
+        Long oldOffset = index.get(id);
+        if (oldOffset == null) return false;
+        String oldDestination=null;
+        // пометить старую запись удалённой
+        try (RandomAccessFile raf = new RandomAccessFile(dbFile, "rw")) {
+            raf.seek(oldOffset);
+            String line = raf.readLine();
+            if (line == null || line.length() == 0) return false;
+            if (line.charAt(0) != '1') return false; // уже удалена
 
-        Long position = idIndex.get(id); // Быстрый поиск через индекс
-        if (position == null) return null;
+            String payload = line.substring(1);
+            BusTicket oldTicket = BusTicket.fromString(payload);
+            oldDestination = oldTicket.getDestination();//Сохраняем старое направление
 
-        raf.seek(position);
-        return readNextTicket(); // Читаем билет по известной позиции
+            // Помечаем старую как удаленную
+            raf.seek(oldOffset);
+            raf.writeByte((byte) '0');
+        }
+
+        // Удаляем из старого destinationIndex
+        if (oldDestination != null) {
+            Set<Integer> oldIds = destinationIndex.get(oldDestination);
+            if (oldIds != null) {
+                oldIds.remove(id);//Удаляем старое id
+                if (oldIds.isEmpty()) {//если множество пустое, удаляем запись из destinationIndex
+                    destinationIndex.remove(oldDestination);
+                }
+            }
+        }
+
+        // Удаляем из основного индекса
+        index.remove(id);
+
+        // Добавляем новую запись (которая обновит оба индекса)
+        return addRecord(updated);
     }
-    // Поиск по направлению - O(1) для поиска + O(k) для чтения результатов
-    public List<BusTicket> searchByDestination(String destination) throws Exception {
-        if (dbFile == null) throw new RuntimeException("DB not opened");
 
-        Set<Integer> ids = destinationIndex.get(destination); // Быстрый поиск через индекс
-        if (ids == null) return new ArrayList<>();
+    /*
+     Backup: копируем файл dbFile -> backupPath
+     */
+    public void backup(String backupPath) throws IOException {
+        if (dbFile == null) throw new IllegalStateException("DB not opened");
+        Files.copy(dbFile.toPath(), Paths.get(backupPath), StandardCopyOption.REPLACE_EXISTING);
+    }
 
+    /*
+     Restore: копируем backupPath -> dbFile и перестраиваем индекс
+     */
+    public void restore(String backupPath) throws IOException {
+        if (dbFile == null) throw new IllegalStateException("DB not opened");
+        Files.copy(Paths.get(backupPath), dbFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        buildIndexFromFile();
+    }
+
+    /* Возвращает true если БД открыта и существует */
+    public boolean isOpened() {
+        return dbFile != null && dbFile.exists();
+    }
+    public List<BusTicket> searchByDestination(String destination) throws IOException {
+        if (dbFile == null) throw new IllegalStateException("DB not opened");
+
+        // Всегда возвращаем List (не null)
         List<BusTicket> results = new ArrayList<>();
-        for (int id : ids) {
-            BusTicket ticket = searchById(id); // O(1) для каждого ID
+
+        Set<Integer> ids = destinationIndex.get(destination);
+        if (ids == null || ids.size() == 0) {
+            return results; // возвращаем пустой список
+        }
+
+        // Создаем копию множества, чтобы избежать проблем при одновременном изменении
+        Set<Integer> idsCopy = new HashSet<>(ids);
+
+        for (int id : idsCopy) {
+            BusTicket ticket = searchById(id);
             if (ticket != null) {
                 results.add(ticket);
             }
         }
+
         return results;
     }
-    // Удаление по направлению - O(1) для поиска + O(k) для удаления
-    public int deleteByDestination(String destination) throws Exception {
-        if (dbFile == null) throw new RuntimeException("DB not opened");
-
+    public int deleteByDestination(String destination) throws IOException {
+        if (dbFile == null) throw new IllegalStateException("DB not opened");
+        //Получаем множество id билетов с указанным направлением
         Set<Integer> ids = destinationIndex.get(destination);
-        if (ids == null) return 0;
+        if (ids == null || ids.isEmpty()) {
+            return 0;
+        }
 
-        int count = 0;
-        // Создаем копию чтобы избежать ConcurrentModificationException
+        // Создаем копию, чтобы избежать ConcurrentModificationException
         Set<Integer> idsCopy = new HashSet<>(ids);
+        int count = 0;
+        //Проходим все id, удаляем
         for (int id : idsCopy) {
             if (deleteById(id)) {
                 count++;
             }
         }
+
         return count;
     }
-
-    // Редактирование (замена по ID) - O(1)
-    public boolean editRecord(BusTicket updated) throws Exception {
-        if (dbFile == null) throw new RuntimeException("DB not opened");
-
-        // Если ID изменился, проверяем уникальность нового ID
-        Long oldPosition = idIndex.get(updated.getId());
-        if (oldPosition == null) return false;
-
-        // Удаляем старую запись из индексов
-        raf.seek(oldPosition);
-        BusTicket oldTicket = readNextTicket();
-        if (oldTicket != null) {
-            Set<Integer> destIds = destinationIndex.get(oldTicket.getDestination());
-            if (destIds != null) {
-                destIds.remove(updated.getId());
-                if (destIds.isEmpty()) {
-                    destinationIndex.remove(oldTicket.getDestination());
-                }
-            }
-        }
-
-        // Записываем обновленную версию в конец файла
-        long newPosition = raf.length();
-        writeTicket(updated, newPosition);
-        // Обновляем индексы
-        idIndex.put(updated.getId(), newPosition);
-        destinationIndex.computeIfAbsent(updated.getDestination(),
-                k -> new HashSet<>()).add(updated.getId());
-
-        return true;
-    }
-
-    // Backup
-    public void backup(String backupPath) throws Exception {
-        Files.copy(dbFile.toPath(), Paths.get(backupPath), StandardCopyOption.REPLACE_EXISTING);
-    }//копируем БД в указанное место
-
-    // Restore
-    public void restore(String backupPath) throws Exception {
-        Files.copy(Paths.get(backupPath), dbFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-        // Перестраиваем индексы после восстановления
-        if (raf != null) {
-            raf.close();
-        }
-        raf = new RandomAccessFile(dbFile, "rw");
-        rebuildIndexes();
-    }//копируем бекап обратно в БД
-
-    public boolean isOpened() { //Проверка, открыта ли БД
-        return dbFile != null;
-    }
-    // Закрытие файла при завершении работы
-    public void close() throws IOException {
-        if (raf != null) {
-            raf.close();
-        }
-    }
-
-
-
 }
-
